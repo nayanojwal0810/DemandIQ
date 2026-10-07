@@ -8,83 +8,60 @@ DemandIQ is a reproducible, leakage-safe retail demand forecasting system design
 
 ## Current Project Status
 
-The project is currently in the **foundation stage**. Repository structure, project control documents, coding standards, and minimal environment dependencies have been established. Data ingestion, modeling pipelines, and empirical evaluations have not yet commenced. No models have been trained and no forecast results exist yet.
+The following components are currently implemented and verified:
+- Source data organization (`data/raw/`)
+- Canonical SKU-day data ingestion (`data/processed/sku_demand_daily.csv`, `data/processed/sku_dimension.csv`)
+- Deterministic data-contract validation and source-to-canonical mathematical reconciliation
+- Development-period demand analytics (`demand_profile.csv`, `brand_summary.csv`, `promotion_summary.csv`)
+- Leakage-safe forecasting feature construction (`data/processed/forecasting_features_development.csv`)
+- Automated unit, integration, and leakage test suite
 
-## Architecture Overview
+The following stages are planned and not yet completed:
+- SQL analytics and dimensional modeling
+- Classical forecasting baselines
+- XGBoost and LightGBM model training
+- Time-based rolling validation and error forensics
+- Hierarchical forecast reconciliation
+- Final blind 2018 holdout evaluation
+- Business decision recommendations
+- Final project documentation
+
+## Planned Architecture
 
 ```text
 UCI Hierarchical Sales Data
-            |
-            v
-      Raw Data Validation
-            |
-            v
-     PostgreSQL / SQL Layer
-     (where analytically useful)
-            |
-            v
-     Canonical Sales Data
-            |
-            v
-      Demand Analytics
-            |
-            v
-   Leakage-Safe Feature Data
-            |
-       +----+----+
-       |         |
-       v         v
-   Baselines   Tree Models
-       |        XGBoost
-       |        LightGBM
-       +----+----+
-            |
-            v
-      Time-Based Evaluation
-            |
-     +------+------+------+
-     |             |      |
-     v             v      v
-Promotion      Hierarchy  Sparse
-Analysis       Reconciliation Demand
-     |             |      |
-     +------+------+------+
-            |
-            v
-       Error Forensics
-            |
-            v
-     Business Recommendations
+        ↓
+Data Ingestion & Integrity Checks
+        ↓
+Canonical SKU-Day Data
+        ↓
+Demand Analytics
+        ↓
+Leakage-Safe Forecasting Features
+        ↓
+SQL Analytics / Data Modeling
+        ↓
+Forecasting Baselines
+        ↓
+XGBoost + LightGBM
+        ↓
+Time-Based Evaluation
+        ↓
+Promotion / Sparse Demand / Hierarchy Analysis
+        ↓
+Business Decision Support
 ```
-
-## Execution Plan & Governance
-
-Technical decisions, frozen evaluation boundaries, and development standards are defined in the project control documents:
-- [execution_plan.md](execution_plan.md) — Technical project execution plan and acceptance criteria
-- [rules.md](rules.md) — Working protocol and review rules
-- [python_design.md](python_design.md) — Python modularity and code standards
-- [documentation_design.md](documentation_design.md) — Documentation standards
 
 ## Repository Structure
 
 ```text
 DemandIQ/
 ├── README.md
-├── execution_plan.md
-├── rules.md
-├── python_design.md
-├── documentation_design.md
 ├── requirements.txt
 ├── .gitignore
 ├── data/
 │   ├── raw/
 │   └── processed/
-├── sql/
-│   ├── schema/
-│   ├── staging/
-│   ├── dimensions/
-│   ├── facts/
-│   └── analytics/
 ├── src/
 │   ├── ingestion/
 │   ├── validation/
