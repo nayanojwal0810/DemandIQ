@@ -55,6 +55,36 @@ FIGURE_NAMES: List[str] = [
 ]
 
 
+def calculate_portfolio_calendar_rolling_mean(
+    daily_df: pd.DataFrame,
+    window_days: int = 28,
+    min_periods: int = 7,
+) -> pd.Series:
+    """Calculate trailing calendar-day rolling mean excluding the target date.
+
+    Semantics: Trailing calendar window [t - window_days, t - 1 day].
+    Missing calendar dates are not imputed as zeros. The current target date t is excluded.
+
+    Parameters
+    ----------
+    daily_df : pd.DataFrame
+        DataFrame with 'date' and 'quantity' columns.
+    window_days : int, optional
+        Window size in calendar days (default: 28).
+    min_periods : int, optional
+        Minimum observed days required in trailing window (default: 7).
+
+    Returns
+    -------
+    pd.Series
+        Rolling mean series indexed by DatetimeIndex.
+    """
+    date_dt = pd.to_datetime(daily_df["date"])
+    s_qty = pd.Series(daily_df["quantity"].values, index=date_dt).sort_index()
+    rolling_series = s_qty.rolling(f"{window_days}D", closed="left", min_periods=min_periods).mean()
+    return rolling_series
+
+
 def plot_portfolio_daily_demand(dev_df: pd.DataFrame, output_path: Path) -> Path:
     """Figure 1: Portfolio Daily Demand Over Time across Development Period.
 
@@ -73,7 +103,9 @@ def plot_portfolio_daily_demand(dev_df: pd.DataFrame, output_path: Path) -> Path
     daily = dev_df.groupby("date")["quantity"].sum().reset_index()
     daily["date_dt"] = pd.to_datetime(daily["date"])
     daily.sort_values(by="date_dt", inplace=True)
-    daily["rolling_28"] = daily["quantity"].rolling(28, min_periods=7).mean()
+    daily["rolling_28"] = calculate_portfolio_calendar_rolling_mean(
+        daily, window_days=28, min_periods=7
+    ).values
 
     fig, ax = plt.subplots(figsize=(11, 4.8), dpi=FIGURE_DPI)
     ax.plot(

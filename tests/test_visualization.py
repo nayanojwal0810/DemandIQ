@@ -27,6 +27,7 @@ from src.visualization.plot_utils import (
 from src.visualization.create_eda_figures import (
     FIGURE_NAMES,
     generate_all_eda_figures,
+    calculate_portfolio_calendar_rolling_mean,
 )
 
 CANONICAL_PATH = Path("data/processed/sku_demand_daily.csv")
@@ -38,6 +39,7 @@ def test_visualization_module_imports():
     import src.visualization.plot_utils as utils
 
     assert hasattr(eda, "generate_all_eda_figures")
+    assert hasattr(eda, "calculate_portfolio_calendar_rolling_mean")
     assert hasattr(eda, "FIGURE_NAMES")
     assert hasattr(utils, "select_representative_dense_sku")
     assert hasattr(utils, "select_representative_sparse_sku")
@@ -254,3 +256,75 @@ def test_holdout_leakage_detection_raises_error(tmp_path, monkeypatch):
             output_dir=tmp_path / "figs",
             cutoff_date=DEVELOPMENT_CUTOFF_DATE,
         )
+
+
+def test_portfolio_calendar_rolling_window_semantics():
+    """Verify portfolio rolling average uses exact trailing calendar days [t-28D, t-1D].
+
+    Tests behavioral differences between calendar window and observed rows:
+    1. Calendar window [t - 28 days, t - 1 day] strictly bounds historical dates.
+    2. Missing calendar dates are not imputed as zero demand.
+    3. The target date itself is excluded (closed='left').
+    4. Row-based rolling yields a different window and value across calendar gaps.
+    """
+    # Synthetic calendar with gap between 2020-01-03 and 2020-01-11 (7 missing calendar days)
+    # Target date: 2020-02-01
+    # Trailing 28-calendar-day window [t-28D, t-1D] is [2020-01-04, 2020-01-31].
+    dates = [
+        "2020-01-01",  # t - 31 days (outside 28-day calendar window)
+        "2020-01-02",  # t - 30 days (outside 28-day calendar window)
+        "2020-01-03",  # t - 29 days (outside 28-day calendar window)
+        # Gap: 2020-01-04 through 2020-01-10 (7 calendar days unobserved)
+        "2020-01-11",  # t - 21 days (inside 28-day window)
+        "2020-01-12",
+        "2020-01-13",
+        "2020-01-14",
+        "2020-01-15",
+        "2020-01-16",
+        "2020-01-17",
+        "2020-01-18",
+        "2020-01-19",
+        "2020-01-20",
+        "2020-01-21",
+        "2020-01-22",
+        "2020-01-23",
+        "2020-01-24",
+        "2020-01-25",
+        "2020-01-26",
+        "2020-01-27",
+        "2020-01-28",
+        "2020-01-29",
+        "2020-01-30",
+        "2020-01-31",  # t - 1 day (inside 28-day window)
+        "2020-02-01",  # Target date t (must be excluded from its own window)
+    ]
+    # Set values: 100 for dates outside window, 10 for dates inside window, 500 for target date
+    quantities = [100, 100, 100] + [10] * 21 + [500]
+    synth_df = pd.DataFrame({"date": dates, "quantity": quantities})
+
+    # Compute calendar rolling mean [t - 28D, t - 1D]
+    rolling_series = calculate_portfolio_calendar_rolling_mean(
+        synth_df, window_days=28, min_periods=7
+    )
+
+    target_dt = pd.to_datetime("2020-02-01")
+    actual_rolling_mean = rolling_series.loc[target_dt]
+
+    # Explicit calculation:
+    # Observations inside [2020-01-04, 2020-01-31]: exactly 21 observations of 10
+    # Mean of observed dates in window: (21 * 10) / 21 = 10.0
+    expected_calendar_mean = 10.0
+    assert actual_rolling_mean == expected_calendar_mean
+
+    # Verification 1: Target date (quantity 500) is excluded
+    assert actual_rolling_mean != 500.0
+
+    # Verification 2: Missing calendar dates are NOT imputed as zero
+    # (If missing 7 days were zeros, mean would be 210 / 28 = 7.5)
+    zero_imputed_mean = 7.5
+    assert actual_rolling_mean != zero_imputed_mean
+
+    # Verification 3: 28 observed rows produces a different value (includes older 100s)
+    # Prior to target, 24 rows exist: (3 * 100 + 21 * 10) / 24 = 21.25
+    row_rolling_mean = 21.25
+    assert actual_rolling_mean != row_rolling_mean
