@@ -1,0 +1,63 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Environment and secrets files
+.env
+.env.*
+!.env.example
+*.env
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# Generated model artifacts
+models/*.joblib
+models/*.pkl
+models/*.json
+*.joblib
+*.pkl
+*.model
+
+# Local data files
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/*.csv
+data/*.zip
+data/*.parquet
+data/*.tar.gz
+*.csv
+*.zip
+
+# Logs and temporary files
+*.log
+logs/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+tmp/
+temp/
