@@ -20,10 +20,11 @@ The following components are currently implemented and verified:
 - XGBoost & LightGBM global forecasting models (promotion-aware and promotion-unaware variants with inner chronological early-stopping) (`src/models/`, `data/processed/ml_metrics.csv`, `data/processed/ml_winner_summary.csv`)
 - Chronological robustness evaluation and expanding-window rolling historical validation across 8 quarterly folds (`src/evaluation/rolling_validation.py`, `src/evaluation/robustness_analysis.py`, `data/processed/rolling_validation_summary.csv`, `data/processed/model_robustness_summary.csv`)
 - Model rank stability, brand/SKU robustness analysis, and 2017 within-year quarterly evaluation (`data/processed/ml_2017_quarterly_metrics.csv`, `reports/figures/`)
+- Promotion-condition and training-only sparse-demand analysis (`src/business/promotion_sparse_analysis.py`, `data/processed/promotion_condition_metrics.csv`, `data/processed/promotion_model_comparison.csv`, `data/processed/sparse_demand_metrics.csv`, `data/processed/sparse_demand_summary.csv`, `data/processed/promotion_sparse_metrics.csv`)
 - Automated unit, integration, leakage, relational, visualization, baseline, tree model, and robustness evaluation test suite
 
 The following stages are planned and not yet completed:
-- Promotion / sparse-demand / hierarchy analysis
+- Hierarchical reconciliation across levels (SKU, Brand, Total)
 - Final blind 2018 holdout evaluation
 - Business decision recommendations
 - Final project documentation
