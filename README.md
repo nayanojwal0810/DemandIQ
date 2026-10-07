@@ -21,10 +21,11 @@ The following components are currently implemented and verified:
 - Chronological robustness evaluation and expanding-window rolling historical validation across 8 quarterly folds (`src/evaluation/rolling_validation.py`, `src/evaluation/robustness_analysis.py`, `data/processed/rolling_validation_summary.csv`, `data/processed/model_robustness_summary.csv`)
 - Model rank stability, brand/SKU robustness analysis, and 2017 within-year quarterly evaluation (`data/processed/ml_2017_quarterly_metrics.csv`, `reports/figures/`)
 - Promotion-condition and training-only sparse-demand analysis (`src/business/promotion_sparse_analysis.py`, `data/processed/promotion_condition_metrics.csv`, `data/processed/promotion_model_comparison.csv`, `data/processed/sparse_demand_metrics.csv`, `data/processed/sparse_demand_summary.csv`, `data/processed/promotion_sparse_metrics.csv`)
-- Automated unit, integration, leakage, relational, visualization, baseline, tree model, and robustness evaluation test suite
+- Hierarchical Bottom-Up reconciliation via deterministic summing matrix `S` producing mathematically coherent SKU → Brand → Total forecasts (`src/hierarchy/`, `data/processed/hierarchy_predictions_rolling.csv`, `data/processed/hierarchy_predictions_2017.csv`, `data/processed/hierarchy_coherence_checks.csv`)
+- Hierarchical accuracy evaluation, model rank stability, and promotion-awareness comparisons across SKU, Brand, and Total levels (`data/processed/hierarchy_metrics_rolling.csv`, `data/processed/hierarchy_metrics_2017.csv`, `data/processed/hierarchy_summary.csv`, `data/processed/hierarchy_promotion_comparison.csv`, `reports/figures/`)
+- Automated unit, integration, leakage, relational, visualization, baseline, tree model, robustness, and hierarchical reconciliation test suite
 
 The following stages are planned and not yet completed:
-- Hierarchical reconciliation across levels (SKU, Brand, Total)
 - Final blind 2018 holdout evaluation
 - Business decision recommendations
 - Final project documentation
