@@ -15,7 +15,8 @@ The following components are currently implemented and verified:
 - Development-period demand analytics (`demand_profile.csv`, `brand_summary.csv`, `promotion_summary.csv`)
 - Leakage-safe forecasting feature construction (`data/processed/forecasting_features_development.csv`)
 - PostgreSQL dimensional modeling, staging COPY, and analytical SQL warehouse (`sql/`, `src/sql/`)
-- Automated unit, integration, leakage, and relational test suite
+- Exploratory data visualization and demand storytelling figures (`src/visualization/`, `reports/figures/`)
+- Automated unit, integration, leakage, relational, and visualization test suite
 
 The following stages are planned and not yet completed:
 - Classical forecasting baselines
@@ -35,7 +36,7 @@ Data Ingestion & Integrity Checks
         ↓
 Canonical SKU-Day Data
         ↓
-Demand Analytics
+Demand Analytics & Visualization
         ↓
 Leakage-Safe Forecasting Features
         ↓
@@ -73,6 +74,7 @@ DemandIQ/
 │   ├── validation/
 │   ├── features/
 │   ├── sql/
+│   ├── visualization/
 │   ├── forecasting/
 │   ├── evaluation/
 │   ├── hierarchy/
