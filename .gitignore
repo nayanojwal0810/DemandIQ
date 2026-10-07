@@ -61,3 +61,9 @@ logs/
 htmlcov/
 tmp/
 temp/
+
+# Internal development control documents
+/execution_plan.md
+/rules.md
+/python_design.md
+/documentation_design.md
