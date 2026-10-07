@@ -103,7 +103,9 @@ class TrainingResult:
     fitted_model : Any
         Fitted model object (retrained on full outer training data).
     best_iteration : int
-        Selected number of boosting trees determined by inner early-stopping.
+        Library-reported best iteration index/count from inner early-stopping.
+    selected_n_estimators : int
+        Actual number of boosting trees used for outer refit (for XGBoost: best_iteration + 1).
     best_inner_score : float
         Best MAE evaluation score achieved on the inner validation set.
     training_seconds : float
@@ -117,10 +119,41 @@ class TrainingResult:
     config: ModelConfig
     fitted_model: Any
     best_iteration: int
+    selected_n_estimators: int
     best_inner_score: float
     training_seconds: float
     feature_names: List[str]
     feature_importances: pd.DataFrame
+
+
+def determine_selected_n_estimators(model_family: str, best_iteration: int) -> int:
+    """Convert library-reported best iteration index/count to refit n_estimators.
+
+    For XGBoost, best_iteration is a 0-based iteration index, so the number of trees
+    trained up to and including that iteration is best_iteration + 1 (e.g., index 0 -> 1 tree,
+    index 166 -> 167 trees).
+    For LightGBM, best_iteration_ is a 1-based tree count (e.g., 1 tree -> 1, 162 trees -> 162).
+
+    Parameters
+    ----------
+    model_family : str
+        "xgboost" or "lightgbm".
+    best_iteration : int
+        Library-reported best iteration.
+
+    Returns
+    -------
+    int
+        Actual number of boosting trees for the outer-training refit (minimum 1).
+    """
+    if model_family == "xgboost":
+        # XGBoost best_iteration is a 0-based index
+        return max(1, int(best_iteration) + 1)
+    elif model_family == "lightgbm":
+        # LightGBM best_iteration_ is a 1-based tree count
+        return max(1, int(best_iteration))
+    else:
+        raise ValueError(f"Unknown model family: {model_family}")
 
 
 def get_model_feature_columns(feature_variant: str) -> List[str]:
@@ -376,18 +409,18 @@ def train_model_with_inner_early_stopping(
             verbose=False,
         )
         best_iter = int(tune_model.best_iteration)
-        # Ensure at least 1 tree
-        best_iter = max(1, best_iter)
+        selected_trees = determine_selected_n_estimators("xgboost", best_iter)
         best_score = float(tune_model.best_score)
 
         logger.info(
-            "XGBoost inner tuning completed: best_iteration=%d, best_inner_score=%.4f",
+            "XGBoost inner tuning completed: best_iteration=%d (0-based index) -> selected_n_estimators=%d, best_inner_score=%.4f",
             best_iter,
+            selected_trees,
             best_score,
         )
 
-        # 2. Refit on full outer training data
-        final_model = build_xgboost_estimator(config, n_estimators=best_iter)
+        # 2. Refit on full outer training data with selected tree count
+        final_model = build_xgboost_estimator(config, n_estimators=selected_trees)
         final_model.fit(X_outer_tr, y_outer_tr)
 
     elif config.model_family == "lightgbm":
@@ -403,7 +436,8 @@ def train_model_with_inner_early_stopping(
             callbacks=callbacks,
         )
         best_iter = int(tune_model.best_iteration_)
-        best_iter = max(1, best_iter)
+        selected_trees = determine_selected_n_estimators("lightgbm", best_iter)
+
         # Extract best inner score from eval results
         eval_results = tune_model.evals_result_ if hasattr(tune_model, "evals_result_") else {}
         if eval_results and "valid_0" in eval_results:
@@ -414,13 +448,14 @@ def train_model_with_inner_early_stopping(
             best_score = float(np.nan)
 
         logger.info(
-            "LightGBM inner tuning completed: best_iteration=%d, best_inner_score=%.4f",
+            "LightGBM inner tuning completed: best_iteration=%d -> selected_n_estimators=%d, best_inner_score=%.4f",
             best_iter,
+            selected_trees,
             best_score,
         )
 
-        # 2. Refit on full outer training data
-        final_model = build_lightgbm_estimator(config, n_estimators=best_iter)
+        # 2. Refit on full outer training data with selected tree count
+        final_model = build_lightgbm_estimator(config, n_estimators=selected_trees)
         final_model.fit(X_outer_tr, y_outer_tr)
 
     else:
@@ -446,6 +481,7 @@ def train_model_with_inner_early_stopping(
         config=config,
         fitted_model=final_model,
         best_iteration=best_iter,
+        selected_n_estimators=selected_trees,
         best_inner_score=best_score,
         training_seconds=duration,
         feature_names=feature_names,

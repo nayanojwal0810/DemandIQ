@@ -413,6 +413,7 @@ def build_training_summary(
                 "training_rows": inner_tr_count,
                 "inner_validation_rows": inner_val_count,
                 "best_iteration": res.best_iteration,
+                "selected_n_estimators": res.selected_n_estimators,
                 "best_inner_score": round(res.best_inner_score, 6),
                 "random_state": res.config.random_state,
                 "training_seconds": round(res.training_seconds, 2),

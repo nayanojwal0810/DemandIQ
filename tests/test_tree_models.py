@@ -31,6 +31,7 @@ from src.models.tree_models import (
     ModelConfig,
     build_lightgbm_estimator,
     build_xgboost_estimator,
+    determine_selected_n_estimators,
     get_model_feature_columns,
     post_process_predictions,
     prepare_categorical_features,
@@ -187,6 +188,106 @@ def test_deterministic_training_reproducibility(synthetic_tree_data):
     np.testing.assert_array_almost_equal(p1, p2, decimal=6)
 
 
+def test_lightgbm_deterministic_training_reproducibility(synthetic_tree_data):
+    """Verify repeated LightGBM training with random_state=42 yields identical predictions."""
+    X, y = synthetic_tree_data
+    cfg = ModelConfig(model_family="lightgbm", feature_variant="with_target_promo", random_state=42)
+
+    m1 = build_lightgbm_estimator(cfg, n_estimators=15)
+    m1.fit(X, y)
+    p1 = m1.predict(X)
+
+    m2 = build_lightgbm_estimator(cfg, n_estimators=15)
+    m2.fit(X, y)
+    p2 = m2.predict(X)
+
+    np.testing.assert_array_almost_equal(p1, p2, decimal=6)
+
+
+def test_xgboost_index_to_tree_count_conversion():
+    """Verify determine_selected_n_estimators implements correct 0-based index to tree count conversion."""
+    # Arbitrary test index values k
+    test_indices = [0, 1, 5, 23, 77, 100, 250]
+    for k in test_indices:
+        # XGBoost best_iteration is 0-based index: selected trees must be k + 1
+        selected = determine_selected_n_estimators("xgboost", k)
+        assert selected == k + 1, f"Expected {k + 1} trees for best_iteration={k}, got {selected}"
+
+    # Explicitly verify best_iteration = 0 does NOT produce zero trees
+    zero_trees = determine_selected_n_estimators("xgboost", 0)
+    assert zero_trees == 1
+    assert zero_trees > 0
+
+    # Verify LightGBM semantics are preserved (1-based tree count)
+    for k in [1, 5, 50, 120]:
+        assert determine_selected_n_estimators("lightgbm", k) == k
+
+    # Edge-case zero in LightGBM clamps to minimum 1 tree
+    assert determine_selected_n_estimators("lightgbm", 0) == 1
+
+
+def test_xgboost_early_stopping_refit_selected_n_estimators():
+    """Verify inner early-stopping XGBoost refit uses selected_n_estimators = best_iteration + 1."""
+    # Build synthetic time-indexed dataset with inner fit and inner validation splits
+    np.random.seed(42)
+    n = 200
+    df = pd.DataFrame(
+        {
+            "brand_id": pd.Categorical(["B1", "B2"] * (n // 2)),
+            "sku_id": pd.Categorical([f"SKU_{i % 4}" for i in range(n)]),
+            "lag_1": np.random.uniform(5, 50, n),
+            "lag_7": np.random.uniform(5, 50, n),
+            "rolling_mean_7": np.random.uniform(5, 50, n),
+            "rolling_mean_28": np.random.uniform(5, 50, n),
+            "rolling_std_7": np.random.uniform(1, 10, n),
+            "rolling_std_28": np.random.uniform(1, 10, n),
+            "target_promotion": np.random.choice([0, 1], n),
+            "day_of_week": np.tile(np.arange(7), n // 7 + 1)[:n],
+            "month": np.ones(n, dtype=int),
+            "is_weekend": np.zeros(n, dtype=int),
+            "day_of_month": np.arange(1, n + 1) % 28 + 1,
+            "target_quantity": np.random.uniform(10, 100, n),
+        }
+    )
+
+    df_inner_tr = df.iloc[:120].copy()
+    df_inner_val = df.iloc[120:160].copy()
+    df_outer_tr = df.iloc[:160].copy()
+
+    cfg = ModelConfig(
+        model_family="xgboost",
+        feature_variant="with_target_promo",
+        max_estimators=30,
+        early_stopping_rounds=5,
+        random_state=42,
+    )
+
+    feature_cols = [c for c in df.columns if c != "target_quantity"]
+    X_inner_tr = df_inner_tr[feature_cols]
+    y_inner_tr = df_inner_tr["target_quantity"].values
+    X_inner_val = df_inner_val[feature_cols]
+    y_inner_val = df_inner_val["target_quantity"].values
+    X_outer_tr = df_outer_tr[feature_cols]
+    y_outer_tr = df_outer_tr["target_quantity"].values
+
+    res = train_model_with_inner_early_stopping(
+        cfg,
+        X_inner_tr,
+        y_inner_tr,
+        X_inner_val,
+        y_inner_val,
+        X_outer_tr,
+        y_outer_tr,
+    )
+
+    # Validate that best_iteration k resulted in refit tree count k + 1
+    k = res.best_iteration
+    assert k >= 0
+    assert res.selected_n_estimators == k + 1
+    assert res.fitted_model.n_estimators == k + 1
+    assert res.selected_n_estimators >= 1
+
+
 # =====================================================================
 # 4. LEAKAGE PREVENTION TESTS
 # =====================================================================
@@ -305,3 +406,36 @@ def test_full_precision_winner_selection():
     # lightgbm_with_target_promo (0.5000001) is lower than xgboost_with_target_promo (0.5000004) and must win
     assert win_dict[("lightgbm", "with_target_promo")] == 1
     assert win_dict[("xgboost", "with_target_promo")] == 0
+
+
+def test_ml_training_summary_file_integrity():
+    """Verify generated ml_training_summary.csv contains unambiguous iteration and tree counts."""
+    summary_path = "data/processed/ml_training_summary.csv"
+    summary_df = pd.read_csv(summary_path)
+
+    expected_cols = [
+        "model",
+        "feature_variant",
+        "outer_train_start",
+        "outer_train_end",
+        "inner_fit_start",
+        "inner_fit_end",
+        "inner_validation_start",
+        "inner_validation_end",
+        "training_rows",
+        "inner_validation_rows",
+        "best_iteration",
+        "selected_n_estimators",
+        "best_inner_score",
+        "random_state",
+        "training_seconds",
+    ]
+    assert list(summary_df.columns) == expected_cols
+    assert len(summary_df) == 4
+
+    for _, row in summary_df.iterrows():
+        assert row["selected_n_estimators"] >= 1
+        if row["model"] == "xgboost":
+            assert row["selected_n_estimators"] == row["best_iteration"] + 1
+        elif row["model"] == "lightgbm":
+            assert row["selected_n_estimators"] == row["best_iteration"]
