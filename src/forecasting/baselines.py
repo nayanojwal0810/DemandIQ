@@ -148,12 +148,9 @@ def fit_ses_training_model(y_train: np.ndarray) -> Tuple[float, float]:
     """
     y = np.asarray(y_train, dtype=float)
 
-    # Edge case: constant or all-zero training history
+    # Edge case: empty training history
     if len(y) == 0:
         return 0.1, 0.0
-
-    if np.all(y == y[0]):
-        return 0.05, float(y[0])
 
     try:
         model = SimpleExpSmoothing(y, initialization_method="estimated")
@@ -164,9 +161,10 @@ def fit_ses_training_model(y_train: np.ndarray) -> Tuple[float, float]:
         initial_level = float(res.level[-1])
         initial_level = max(0.0, initial_level)
     except Exception:
-        # Robust fallback for pathological optimization failure
+        # Robust fallback only for genuine fitting / optimization exceptions.
+        # Fallback is deterministic, training-only, and non-leaky.
         alpha = 0.1
-        initial_level = float(np.mean(y))
+        initial_level = max(0.0, float(np.mean(y)))
 
     return alpha, initial_level
 

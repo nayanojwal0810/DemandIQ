@@ -388,3 +388,40 @@ def test_no_inf_or_unexpected_nan_in_predictions():
     # seasonal_naive_7 has legitimate NaNs only where t - 7 was not observed
     assert not np.isinf(val_preds["seasonal_naive_7"]).any()
     assert val_preds["seasonal_naive_7"].isna().sum() == 236
+
+
+def test_ses_constant_series_follows_normal_fitting_path():
+    """Verify constant training series follows standard statsmodels fitting path rather than hardcoded 0.05."""
+    train_y = np.full(50, 5.0)
+    alpha, init_level = fit_ses_training_model(train_y)
+
+    assert init_level == pytest.approx(5.0)
+    assert alpha != 0.05  # Proves it does not use a hardcoded 0.05 special case
+    assert 0.0 < alpha <= 1.0
+
+
+def test_sku_winner_selection_uses_full_precision_wape():
+    """Verify winner selection uses full precision rather than rounded ties.
+
+    If two baselines differ by less than 1e-6 WAPE (e.g. 0.5000001 vs 0.5000004),
+    the lower full-precision value must win even if a tie-break priority would favor
+    the other under 6-decimal rounding.
+    """
+    # ets_ses has higher tie-break priority than croston_sba (priority 0 vs 1).
+    # Give ets_ses WAPE = 0.5000004, and croston_sba WAPE = 0.5000001.
+    # If rounded to 6 decimals, both would be 0.500000 and ets_ses would win on tie-break.
+    # Under full precision, croston_sba (0.5000001 < 0.5000004) MUST win.
+    synthetic_sku_metrics = pd.DataFrame(
+        [
+            {"evaluation_scope": "common_valid", "brand_id": "B1", "sku_id": "SKU_X", "baseline": "naive", "wape": 0.8},
+            {"evaluation_scope": "common_valid", "brand_id": "B1", "sku_id": "SKU_X", "baseline": "seasonal_naive_7", "wape": 0.9},
+            {"evaluation_scope": "common_valid", "brand_id": "B1", "sku_id": "SKU_X", "baseline": "moving_average_7d", "wape": 0.7},
+            {"evaluation_scope": "common_valid", "brand_id": "B1", "sku_id": "SKU_X", "baseline": "ets_ses", "wape": 0.5000004},
+            {"evaluation_scope": "common_valid", "brand_id": "B1", "sku_id": "SKU_X", "baseline": "croston_sba", "wape": 0.5000001},
+        ]
+    )
+    winner_summary = calculate_baseline_winners(synthetic_sku_metrics)
+    winner_dict = winner_summary.set_index("baseline")["sku_wins"].to_dict()
+
+    assert winner_dict["croston_sba"] == 1
+    assert winner_dict["ets_ses"] == 0

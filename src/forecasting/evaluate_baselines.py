@@ -217,10 +217,10 @@ def calculate_baseline_metrics(val_df: pd.DataFrame) -> pd.DataFrame:
                 "baseline": b,
                 "valid_prediction_count": valid_count,
                 "total_validation_targets": total_val_targets,
-                "coverage": round(cov, 6),
-                "wape": round(calculate_wape(actual, pred), 6),
-                "mae": round(calculate_mae(actual, pred), 6),
-                "rmse": round(calculate_rmse(actual, pred), 6),
+                "coverage": cov,
+                "wape": float(calculate_wape(actual, pred)),
+                "mae": float(calculate_mae(actual, pred)),
+                "rmse": float(calculate_rmse(actual, pred)),
             }
         )
 
@@ -240,10 +240,10 @@ def calculate_baseline_metrics(val_df: pd.DataFrame) -> pd.DataFrame:
                 "baseline": b,
                 "valid_prediction_count": common_count,
                 "total_validation_targets": total_val_targets,
-                "coverage": round(common_cov, 6),
-                "wape": round(calculate_wape(actual, pred), 6),
-                "mae": round(calculate_mae(actual, pred), 6),
-                "rmse": round(calculate_rmse(actual, pred), 6),
+                "coverage": common_cov,
+                "wape": float(calculate_wape(actual, pred)),
+                "mae": float(calculate_mae(actual, pred)),
+                "rmse": float(calculate_rmse(actual, pred)),
             }
         )
 
@@ -254,6 +254,8 @@ def calculate_baseline_metrics(val_df: pd.DataFrame) -> pd.DataFrame:
 def calculate_sku_metrics(val_df: pd.DataFrame) -> pd.DataFrame:
     """Calculate SKU-level metrics for all baselines under both scopes.
 
+    Internal metrics remain full precision floats.
+
     Parameters
     ----------
     val_df : pd.DataFrame
@@ -262,7 +264,7 @@ def calculate_sku_metrics(val_df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        SKU metrics table.
+        SKU metrics table with full-precision metric floats.
     """
     common_mask = val_df[BASELINES].notna().all(axis=1)
     rows: List[Dict[str, object]] = []
@@ -287,10 +289,10 @@ def calculate_sku_metrics(val_df: pd.DataFrame) -> pd.DataFrame:
                     "sku_id": sku_id,
                     "baseline": b,
                     "valid_prediction_count": count,
-                    "coverage": round(cov, 6),
-                    "wape": round(calculate_wape(actual, pred), 6),
-                    "mae": round(calculate_mae(actual, pred), 6),
-                    "rmse": round(calculate_rmse(actual, pred), 6),
+                    "coverage": cov,
+                    "wape": float(calculate_wape(actual, pred)),
+                    "mae": float(calculate_mae(actual, pred)),
+                    "rmse": float(calculate_rmse(actual, pred)),
                 }
             )
 
@@ -310,10 +312,10 @@ def calculate_sku_metrics(val_df: pd.DataFrame) -> pd.DataFrame:
                     "sku_id": sku_id,
                     "baseline": b,
                     "valid_prediction_count": common_count,
-                    "coverage": round(common_cov, 6),
-                    "wape": round(calculate_wape(actual, pred), 6),
-                    "mae": round(calculate_mae(actual, pred), 6),
-                    "rmse": round(calculate_rmse(actual, pred), 6),
+                    "coverage": common_cov,
+                    "wape": float(calculate_wape(actual, pred)),
+                    "mae": float(calculate_mae(actual, pred)),
+                    "rmse": float(calculate_rmse(actual, pred)),
                 }
             )
 
@@ -325,9 +327,9 @@ def calculate_sku_metrics(val_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def calculate_baseline_winners(sku_metrics_df: pd.DataFrame) -> pd.DataFrame:
-    """Identify winning baseline per SKU based on lowest WAPE in common_valid scope.
+    """Identify winning baseline per SKU based on lowest full-precision WAPE in common_valid scope.
 
-    Documented deterministic tie-breaker priority order:
+    Documented deterministic tie-breaker priority order (operates strictly on full-precision ties):
     1. ets_ses
     2. croston_sba
     3. moving_average_7d
@@ -352,12 +354,16 @@ def calculate_baseline_winners(sku_metrics_df: pd.DataFrame) -> pd.DataFrame:
     wins: Dict[str, int] = {b: 0 for b in BASELINES}
 
     for sku_id, g in common_df.groupby("sku_id"):
-        # Map baseline -> wape
+        # Map baseline -> full-precision wape
         b_wape = g.set_index("baseline")["wape"].to_dict()
 
-        # Find minimum WAPE
+        # Find minimum WAPE using full precision
         min_wape = min(b_wape.values())
-        candidates = [b for b, w in b_wape.items() if np.isclose(w, min_wape, atol=1e-9)]
+        candidates = [
+            b
+            for b, w in b_wape.items()
+            if w == min_wape or np.isclose(w, min_wape, rtol=1e-14, atol=1e-14)
+        ]
 
         # Apply deterministic tie-break priority
         candidates.sort(key=lambda b: tie_break_priority[b])
@@ -372,7 +378,7 @@ def calculate_baseline_winners(sku_metrics_df: pd.DataFrame) -> pd.DataFrame:
             {
                 "baseline": b,
                 "sku_wins": cnt,
-                "sku_win_share": round(share, 6),
+                "sku_win_share": share,
             }
         )
 
@@ -388,6 +394,9 @@ def save_baseline_outputs(
     output_dir: UnionPath = "data/processed",
 ) -> None:
     """Save all baseline prediction and metric deliverables deterministically.
+
+    Metrics written to CSV are formatted and rounded to 6 decimal places for clean reporting,
+    while internal calculations and winner selections use full precision.
 
     Parameters
     ----------
@@ -405,10 +414,25 @@ def save_baseline_outputs(
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
+    # Format tables for clean CSV presentation
+    port_csv = portfolio_metrics.copy()
+    for col in ["coverage", "wape", "mae", "rmse"]:
+        if col in port_csv.columns:
+            port_csv[col] = port_csv[col].round(6)
+
+    sku_csv = sku_metrics.copy()
+    for col in ["coverage", "wape", "mae", "rmse"]:
+        if col in sku_csv.columns:
+            sku_csv[col] = sku_csv[col].round(6)
+
+    winner_csv = winner_summary.copy()
+    if "sku_win_share" in winner_csv.columns:
+        winner_csv["sku_win_share"] = winner_csv["sku_win_share"].round(6)
+
     val_preds.to_csv(out_path / "baseline_predictions_validation.csv", index=False)
-    portfolio_metrics.to_csv(out_path / "baseline_metrics.csv", index=False)
-    sku_metrics.to_csv(out_path / "baseline_sku_metrics.csv", index=False)
-    winner_summary.to_csv(out_path / "baseline_winner_summary.csv", index=False)
+    port_csv.to_csv(out_path / "baseline_metrics.csv", index=False)
+    sku_csv.to_csv(out_path / "baseline_sku_metrics.csv", index=False)
+    winner_csv.to_csv(out_path / "baseline_winner_summary.csv", index=False)
 
     logger.info("Saved baseline deliverables to %s", out_path)
 
@@ -516,11 +540,15 @@ def main() -> None:
     print("DEMANDIQ BASELINES EVALUATION SUMMARY")
     print("=" * 60)
     print("\nPORTFOLIO METRICS (common_valid):")
-    cv_metrics = portfolio_metrics[portfolio_metrics["evaluation_scope"] == "common_valid"]
+    cv_metrics = portfolio_metrics[portfolio_metrics["evaluation_scope"] == "common_valid"].copy()
+    for col in ["coverage", "wape", "mae", "rmse"]:
+        cv_metrics[col] = cv_metrics[col].round(6)
     print(cv_metrics[["baseline", "valid_prediction_count", "coverage", "wape", "mae", "rmse"]].to_string(index=False))
 
     print("\nSKU WINS SUMMARY (common_valid):")
-    print(winner_summary.to_string(index=False))
+    ws_display = winner_summary.copy()
+    ws_display["sku_win_share"] = ws_display["sku_win_share"].round(6)
+    print(ws_display.to_string(index=False))
     print("=" * 60 + "\n")
 
 
