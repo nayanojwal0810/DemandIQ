@@ -17,10 +17,10 @@ The following components are currently implemented and verified:
 - PostgreSQL dimensional modeling, staging COPY, and analytical SQL warehouse (`sql/`, `src/sql/`)
 - Exploratory data visualization and demand storytelling figures (`src/visualization/`, `reports/figures/`)
 - Classical forecasting baselines and chronological validation (`src/forecasting/`, `src/evaluation/`, `data/processed/baseline_metrics.csv`, `data/processed/baseline_winner_summary.csv`)
-- Automated unit, integration, leakage, relational, visualization, and baseline test suite
+- XGBoost & LightGBM global forecasting models (promotion-aware and promotion-unaware variants with inner chronological early-stopping) (`src/models/`, `data/processed/ml_metrics.csv`, `data/processed/ml_winner_summary.csv`)
+- Automated unit, integration, leakage, relational, visualization, baseline, and tree model test suite
 
 The following stages are planned and not yet completed:
-- XGBoost and LightGBM model training
 - Time-based rolling validation and error forensics
 - Promotion / sparse-demand / hierarchy analysis
 - Final blind 2018 holdout evaluation
@@ -76,6 +76,7 @@ DemandIQ/
 │   ├── sql/
 │   ├── visualization/
 │   ├── forecasting/
+│   ├── models/
 │   ├── evaluation/
 │   ├── hierarchy/
 │   └── business/
