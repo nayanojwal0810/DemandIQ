@@ -16,10 +16,10 @@ The following components are currently implemented and verified:
 - Leakage-safe forecasting feature construction (`data/processed/forecasting_features_development.csv`)
 - PostgreSQL dimensional modeling, staging COPY, and analytical SQL warehouse (`sql/`, `src/sql/`)
 - Exploratory data visualization and demand storytelling figures (`src/visualization/`, `reports/figures/`)
-- Automated unit, integration, leakage, relational, and visualization test suite
+- Classical forecasting baselines and chronological validation (`src/forecasting/`, `src/evaluation/`, `data/processed/baseline_metrics.csv`, `data/processed/baseline_winner_summary.csv`)
+- Automated unit, integration, leakage, relational, visualization, and baseline test suite
 
 The following stages are planned and not yet completed:
-- Classical forecasting baselines
 - XGBoost and LightGBM model training
 - Time-based rolling validation and error forensics
 - Promotion / sparse-demand / hierarchy analysis
