@@ -90,6 +90,18 @@ class TestPostgreSQLPipeline:
             multi_brand_skus = cur.fetchall()
             assert len(multi_brand_skus) == 0, f"Found SKUs mapping to multiple brands: {multi_brand_skus}"
 
+            # Direct validation that every fact-row brand_id matches dim_sku.brand_id
+            cur.execute(
+                """
+                SELECT COUNT(*)
+                FROM fact_daily_demand f
+                JOIN dim_sku s ON f.sku_id = s.sku_id
+                WHERE f.brand_id != s.brand_id;
+                """
+            )
+            brand_mismatches = cur.fetchone()[0]
+            assert brand_mismatches == 0, f"Found {brand_mismatches} fact rows where brand_id != dim_sku.brand_id"
+
     def test_date_dimension_continuous_calendar(self, db_conn):
         """Verify calendar dimension spans 2014-01-02 to 2018-12-31 without gaps."""
         with db_conn.cursor() as cur:
@@ -108,36 +120,57 @@ class TestPostgreSQLPipeline:
         run_analytical_cross_checks(db_conn)
 
     def test_window_function_previous_observed_semantics(self, db_conn):
-        """Verify LAG(quantity) represents previous observed row, not necessarily calendar day."""
+        """Verify LAG(quantity) represents previous observed record across calendar gaps."""
         with db_conn.cursor() as cur:
-            # Check for B1_1 after a store closure gap (e.g. 2014-01-06 vs 2014-01-07 if gap exists)
+            # Query rows where previous observed trading date is more than one calendar day earlier
             cur.execute(
                 """
                 WITH ordered_demand AS (
                     SELECT
                         date,
                         quantity,
+                        LAG(date) OVER (PARTITION BY sku_id ORDER BY date) AS prev_date,
                         LAG(quantity) OVER (PARTITION BY sku_id ORDER BY date) AS lag_qty
                     FROM fact_daily_demand
                     WHERE sku_id = 'B1_1'
                 )
-                SELECT date, quantity, lag_qty
+                SELECT
+                    date,
+                    quantity,
+                    prev_date,
+                    lag_qty,
+                    (date - prev_date) AS day_gap
                 FROM ordered_demand
-                ORDER BY date
-                LIMIT 5;
+                WHERE prev_date IS NOT NULL
+                  AND (date - prev_date) > 1
+                ORDER BY date;
                 """
             )
-            rows = cur.fetchall()
-            # First row has NULL lag_qty
-            assert rows[0][2] is None
-            # Subsequent rows match prior row quantity exactly
-            for i in range(1, len(rows)):
-                assert rows[i][2] == rows[i - 1][1]
+            gap_rows = cur.fetchall()
+            assert len(gap_rows) > 0, "Expected observed dates for B1_1 separated by calendar gaps"
+
+            # Assert each gap is > 1 day and lag_qty equals demand from that previous observed date
+            for row in gap_rows:
+                curr_date, curr_qty, prev_date, lag_qty, day_gap = row
+                assert day_gap > 1, f"Expected day gap > 1 on {curr_date}, got {day_gap}"
+
+                cur.execute(
+                    """
+                    SELECT quantity
+                    FROM fact_daily_demand
+                    WHERE sku_id = 'B1_1' AND date = %s;
+                    """,
+                    (prev_date,),
+                )
+                expected_prev_qty = cur.fetchone()[0]
+                assert lag_qty == expected_prev_qty, (
+                    f"lag_qty {lag_qty} does not match quantity on {prev_date} ({expected_prev_qty})"
+                )
 
     def test_exact_calendar_lag_7_semantics(self, db_conn):
-        """Verify exact calendar lag t-7 correctly yields NULL when t-7 was not observed."""
+        """Verify exact calendar lag t-7 yields NULL when t-7 was not observed for that SKU."""
         with db_conn.cursor() as cur:
-            # Query dates where date - 7 days was absent from the dataset
+            # Correlated NOT EXISTS to find dates where t-7 was unobserved for B1_1
             cur.execute(
                 """
                 SELECT
@@ -149,16 +182,23 @@ class TestPostgreSQLPipeline:
                     ON prior_7.sku_id = curr.sku_id
                    AND prior_7.date = (curr.date - INTERVAL '7 days')::DATE
                 WHERE curr.sku_id = 'B1_1'
-                  AND (curr.date - INTERVAL '7 days')::DATE NOT IN (
-                      SELECT DISTINCT date FROM fact_daily_demand
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM fact_daily_demand check_prior
+                      WHERE check_prior.sku_id = curr.sku_id
+                        AND check_prior.date = (curr.date - INTERVAL '7 days')::DATE
                   )
-                LIMIT 5;
+                ORDER BY curr.date;
                 """
             )
             gap_rows = cur.fetchall()
-            assert len(gap_rows) > 0, "Expected dates with unobserved t-7 calendar dates"
+            assert len(gap_rows) > 0, "Expected observed dates for B1_1 where t-7 was unobserved"
             for row in gap_rows:
-                assert row[2] is None, f"Expected NULL for unobserved calendar lag on {row[0]}, got {row[2]}"
+                curr_date, sku_id, lag_7_qty = row
+                assert lag_7_qty is None, (
+                    f"Expected NULL for unobserved calendar lag t-7 on {curr_date}, got {lag_7_qty}"
+                )
+
 
     def test_development_cutoff_boundary(self, db_conn):
         """Verify decision-oriented SQL analytics strictly exclude 2018 records."""
