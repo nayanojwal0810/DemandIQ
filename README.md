@@ -18,10 +18,11 @@ The following components are currently implemented and verified:
 - Exploratory data visualization and demand storytelling figures (`src/visualization/`, `reports/figures/`)
 - Classical forecasting baselines and chronological validation (`src/forecasting/`, `src/evaluation/`, `data/processed/baseline_metrics.csv`, `data/processed/baseline_winner_summary.csv`)
 - XGBoost & LightGBM global forecasting models (promotion-aware and promotion-unaware variants with inner chronological early-stopping) (`src/models/`, `data/processed/ml_metrics.csv`, `data/processed/ml_winner_summary.csv`)
-- Automated unit, integration, leakage, relational, visualization, baseline, and tree model test suite
+- Chronological robustness evaluation and expanding-window rolling historical validation across 8 quarterly folds (`src/evaluation/rolling_validation.py`, `src/evaluation/robustness_analysis.py`, `data/processed/rolling_validation_summary.csv`, `data/processed/model_robustness_summary.csv`)
+- Model rank stability, brand/SKU robustness analysis, and 2017 within-year quarterly evaluation (`data/processed/ml_2017_quarterly_metrics.csv`, `reports/figures/`)
+- Automated unit, integration, leakage, relational, visualization, baseline, tree model, and robustness evaluation test suite
 
 The following stages are planned and not yet completed:
-- Time-based rolling validation and error forensics
 - Promotion / sparse-demand / hierarchy analysis
 - Final blind 2018 holdout evaluation
 - Business decision recommendations
